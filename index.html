@@ -1,0 +1,331 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+    <meta name="theme-color" content="#0C2340" />
+    <meta name="apple-mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+    <meta name="apple-mobile-web-app-title" content="Agenda Jurídica" />
+    <meta name="description" content="Agenda de audiências, prazos e compromissos jurídicos, com avisos 7 dias antes, 1 dia antes e no dia." />
+    <title>Agenda Jurídica</title>
+    <link rel="manifest" href="./manifest.json" />
+    <link rel="icon" href="./icons/favicon.png" />
+    <link rel="apple-touch-icon" href="./icons/apple-touch-icon.png" />
+    <link rel="stylesheet" href="./styles.css" />
+  </head>
+  <body>
+    <div id="app">
+      <section class="screen centered" data-screen="onboarding" id="onboarding">
+        <div class="eyebrow">Agenda Jurídica</div>
+        <div>
+          <div class="logo-mark"><img src="./icons/icon-192.png" alt="" /></div>
+          <h1 class="h1" id="onb-title"></h1>
+          <p class="secondary" id="onb-text" style="margin-top: 12px; line-height: 1.5"></p>
+        </div>
+        <div class="stack">
+          <div class="dots-page" id="onb-dots"></div>
+          <button class="btn btn-primary" id="onb-next" type="button">Continuar</button>
+        </div>
+      </section>
+
+      <section class="screen centered" data-screen="lock">
+        <div>
+          <div class="eyebrow">Agenda Jurídica</div>
+          <h1 class="h1" style="margin-top: 12px">Digite o PIN</h1>
+          <p class="secondary" style="margin-top: 8px">Os compromissos deste aparelho estão protegidos.</p>
+          <div class="pin-dots" id="pin-dots"><i></i><i></i><i></i><i></i></div>
+          <p class="error hidden" id="pin-error">PIN incorreto.</p>
+        </div>
+        <div class="pin-pad" id="pin-pad">
+          <button type="button" data-pin="1">1</button>
+          <button type="button" data-pin="2">2</button>
+          <button type="button" data-pin="3">3</button>
+          <button type="button" data-pin="4">4</button>
+          <button type="button" data-pin="5">5</button>
+          <button type="button" data-pin="6">6</button>
+          <button type="button" data-pin="7">7</button>
+          <button type="button" data-pin="8">8</button>
+          <button type="button" data-pin="9">9</button>
+          <span></span>
+          <button type="button" data-pin="0">0</button>
+          <button type="button" data-pin="del" aria-label="Apagar">⌫</button>
+        </div>
+      </section>
+
+      <section class="screen" data-screen="home">
+        <div class="eyebrow" id="home-date"></div>
+        <h1 class="title" id="home-greet">Olá</h1>
+        <div class="install-banner" id="install-banner" style="margin-top: 16px">
+          <div style="flex: 1">
+            <strong>Instalar no aparelho</strong>
+            <p class="caption">Fica na tela inicial, como um aplicativo.</p>
+          </div>
+          <button class="btn btn-gold" id="install-btn" type="button" style="width: auto; padding-inline: 14px">Instalar</button>
+        </div>
+        <div class="stack gap-16" id="home-content" style="margin-top: 16px"></div>
+      </section>
+
+      <section class="screen" data-screen="calendar">
+        <h1 class="title">Calendário</h1>
+        <div class="chips" style="margin: 12px 0">
+          <button class="chip active" type="button" data-cal-mode="mes">Mês</button>
+          <button class="chip" type="button" data-cal-mode="semana">Semana</button>
+          <button class="chip" type="button" data-cal-mode="lista">Lista</button>
+        </div>
+        <div id="calendar-wrap"></div>
+      </section>
+
+      <section class="screen" data-screen="list">
+        <h1 class="title">Compromissos</h1>
+        <div class="search" style="margin: 12px 0">
+          <span aria-hidden="true">⌕</span>
+          <input id="search" type="search" placeholder="Cliente, processo, comarca..." autocomplete="off" />
+        </div>
+        <div class="chips scroll" id="list-chips"></div>
+        <div class="stack" id="list-content" style="margin-top: 14px"></div>
+      </section>
+
+      <section class="screen" data-screen="settings">
+        <h1 class="title">Ajustes</h1>
+        <div class="stack gap-16" style="margin-top: 16px">
+          <div>
+            <div class="group-title">Lembretes</div>
+            <div class="group">
+              <label class="switch-row">
+                <span>
+                  Notificações do aparelho
+                  <small class="caption" style="display: block">Além dos avisos na tela do app</small>
+                </span>
+                <span class="switch"><input id="set-notif" type="checkbox" /><span></span></span>
+              </label>
+              <label class="switch-row"><span>7 dias antes</span><span class="switch"><input id="set-7d" type="checkbox" /><span></span></span></label>
+              <label class="switch-row"><span>1 dia antes</span><span class="switch"><input id="set-1d" type="checkbox" /><span></span></span></label>
+              <label class="switch-row"><span>No mesmo dia</span><span class="switch"><input id="set-same" type="checkbox" /><span></span></span></label>
+              <label class="switch-row"><span>10 dias antes</span><span class="switch"><input id="set-10d" type="checkbox" /><span></span></span></label>
+              <label class="switch-row">
+                <span>Horário padrão dos alertas</span>
+                <input id="set-time" type="time" value="08:00" style="width: 110px; min-height: 40px; background: var(--input); border: 1px solid var(--border); border-radius: 10px; padding: 6px 8px" />
+              </label>
+            </div>
+          </div>
+          <div>
+            <div class="group-title">Privacidade</div>
+            <div class="group">
+              <button class="setting-row" type="button" id="set-pin-btn">
+                <span>Proteger com PIN</span>
+                <span class="caption" id="set-pin-label">Desativado</span>
+              </button>
+              <button class="setting-row" type="button" data-privacy="completa">
+                <span>Notificação completa</span>
+                <span class="caption" id="priv-completa"></span>
+              </button>
+              <button class="setting-row" type="button" data-privacy="privada">
+                <span>
+                  Notificação privada
+                  <small class="caption" style="display: block">Mostra só “Você possui um compromisso agendado”</small>
+                </span>
+                <span class="caption" id="priv-privada"></span>
+              </button>
+            </div>
+          </div>
+          <div>
+            <div class="group-title">Aparência</div>
+            <div class="group">
+              <button class="setting-row" type="button" data-theme-pref="automatico"><span>Automático</span><span class="caption" id="th-auto"></span></button>
+              <button class="setting-row" type="button" data-theme-pref="claro"><span>Claro</span><span class="caption" id="th-claro"></span></button>
+              <button class="setting-row" type="button" data-theme-pref="escuro"><span>Escuro</span><span class="caption" id="th-escuro"></span></button>
+            </div>
+          </div>
+          <div>
+            <div class="group-title">Dados</div>
+            <div class="group">
+              <button class="setting-row" type="button" id="btn-import">
+                <span>Importar planilha
+                  <small class="caption" style="display: block">Excel (.xlsx, .xls) ou CSV</small>
+                </span>
+              </button>
+              <button class="setting-row" type="button" id="btn-export-csv">Exportar CSV</button>
+              <button class="setting-row" type="button" id="btn-export-json">Exportar cópia de segurança</button>
+              <button class="setting-row" type="button" id="btn-import-json">Importar cópia de segurança</button>
+              <button class="setting-row" type="button" id="btn-subjects">Assuntos personalizados</button>
+            </div>
+            <input id="file-csv" type="file" accept=".xlsx,.xls,.csv,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet,application/vnd.ms-excel,text/csv" hidden />
+            <input id="file-json" type="file" accept="application/json,.json" hidden />
+          </div>
+          <div>
+            <div class="group-title">Sobre</div>
+            <div class="group">
+              <div class="setting-row"><span>Agenda Jurídica</span><span class="caption">1.0.0</span></div>
+              <div class="setting-row"><span>Fuso horário</span><span class="caption">America/Sao_Paulo</span></div>
+              <button class="setting-row" type="button" id="btn-howto">Como instalar neste aparelho</button>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <section class="screen" data-screen="form">
+        <div class="topbar">
+          <button class="icon-btn" type="button" data-back aria-label="Voltar">‹</button>
+          <h2 class="h2" id="form-title">Novo compromisso</h2>
+        </div>
+        <form id="appt-form" class="stack" novalidate>
+          <div class="field">
+            <label>Cliente <span class="req">*</span></label>
+            <input name="clientName" placeholder="Nome do cliente" autocomplete="name" />
+            <div class="error" data-error="clientName"></div>
+          </div>
+          <div class="grid-2">
+            <div class="field">
+              <label>Data <span class="req">*</span></label>
+              <input name="date" type="date" />
+              <div class="error" data-error="date"></div>
+            </div>
+            <div class="field">
+              <label>Horário <span class="req">*</span></label>
+              <input name="time" type="time" />
+              <div class="error" data-error="time"></div>
+            </div>
+          </div>
+          <div class="field">
+            <label>Nº do processo</label>
+            <input name="processNumber" placeholder="0000000-00.0000.0.00.0000" />
+          </div>
+          <div class="field">
+            <label>Assunto</label>
+            <div class="chips" id="form-subjects"></div>
+            <input id="custom-subject" placeholder="Assunto personalizado e Enter" />
+          </div>
+          <div class="field">
+            <label>Comarca</label>
+            <input name="courthouse" placeholder="Ex.: Pinheiro" />
+          </div>
+          <div class="field">
+            <label>Local da audiência</label>
+            <input name="location" placeholder="Fórum, sala ou endereço" />
+          </div>
+          <div class="field">
+            <label>Tipo de compromisso</label>
+            <div class="chips" id="form-types"></div>
+          </div>
+          <div class="field">
+            <label>Observações</label>
+            <textarea name="notes" placeholder="Anotações internas"></textarea>
+          </div>
+          <div class="field">
+            <label>Lembretes</label>
+            <div class="group">
+              <label class="switch-row"><span>7 dias antes</span><span class="switch"><input name="reminder7d" type="checkbox" /><span></span></span></label>
+              <label class="switch-row"><span>1 dia antes</span><span class="switch"><input name="reminder1d" type="checkbox" /><span></span></span></label>
+              <label class="switch-row"><span>No mesmo dia</span><span class="switch"><input name="reminderSameDay" type="checkbox" /><span></span></span></label>
+              <label class="switch-row"><span>10 dias antes</span><span class="switch"><input name="reminder10d" type="checkbox" /><span></span></span></label>
+            </div>
+            <p class="caption">Os avisos de 7 dias, 1 dia e do dia vêm ligados. Horário padrão: <span id="form-alert-time">08:00</span>.</p>
+          </div>
+          <button class="btn btn-primary" type="submit" id="form-save">Salvar compromisso</button>
+        </form>
+      </section>
+
+      <section class="screen" data-screen="detail">
+        <div class="topbar">
+          <button class="icon-btn" type="button" data-back aria-label="Voltar">‹</button>
+          <h2 class="h2" style="flex: 1">Compromisso</h2>
+          <button class="icon-btn" type="button" id="detail-edit" aria-label="Editar">✎</button>
+        </div>
+        <div id="detail-content"></div>
+      </section>
+
+      <section class="screen" data-screen="import">
+        <div class="topbar">
+          <button class="icon-btn" type="button" data-back aria-label="Voltar">‹</button>
+          <h2 class="h2">Importar planilha</h2>
+        </div>
+        <p class="secondary">Aceita Excel (.xlsx, .xls) e CSV. Colunas: Data, Horário, Nº do processo, Cliente, Assunto e Comarca.</p>
+        <div id="import-preview" class="stack" style="margin-top: 16px"></div>
+      </section>
+
+      <section class="screen" data-screen="subjects">
+        <div class="topbar">
+          <button class="icon-btn" type="button" data-back aria-label="Voltar">‹</button>
+          <h2 class="h2">Assuntos</h2>
+        </div>
+        <form id="subject-form" class="stack">
+          <div class="field">
+            <label>Novo assunto</label>
+            <input id="subject-name" placeholder="Nome do assunto" />
+          </div>
+          <button class="btn btn-primary" type="submit">Adicionar</button>
+        </form>
+        <div id="subject-list" class="stack" style="margin-top: 18px"></div>
+      </section>
+
+      <nav class="tabbar" id="tabbar">
+        <button class="tab active" type="button" data-tab="home">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M4 10.5 12 4l8 6.5V20a1 1 0 0 1-1 1h-5v-6H10v6H5a1 1 0 0 1-1-1z"/></svg>
+          Início
+        </button>
+        <button class="tab" type="button" data-tab="calendar">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><rect x="3.5" y="5" width="17" height="15" rx="2"/><path d="M8 3.5v3M16 3.5v3M3.5 9.5h17"/></svg>
+          Calendário
+        </button>
+        <button class="tab" type="button" data-tab="list">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><rect x="4" y="5" width="16" height="14" rx="2"/><path d="M8 10h8M8 14h5"/></svg>
+          Compromissos
+        </button>
+        <button class="tab" type="button" data-tab="settings">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.7 1.7 0 0 0 .3 1.8l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1A1.7 1.7 0 0 0 15 19.4a1.7 1.7 0 0 0-1 .0 1.7 1.7 0 0 0-1 1.5V21a2 2 0 1 1-4 0v-.1A1.7 1.7 0 0 0 8 19.4a1.7 1.7 0 0 0-1.8-.3l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1A1.7 1.7 0 0 0 4.6 15a1.7 1.7 0 0 0 0-1 1.7 1.7 0 0 0-1.5-1H3a2 2 0 1 1 0-4h.1A1.7 1.7 0 0 0 4.6 8a1.7 1.7 0 0 0 .3-1.8l-.1-.1a2 2 0 1 1 2.8-2.8l.1.1A1.7 1.7 0 0 0 9 4.6a1.7 1.7 0 0 0 1 0 1.7 1.7 0 0 0 1-1.5V3a2 2 0 1 1 4 0v.1A1.7 1.7 0 0 0 16 4.6a1.7 1.7 0 0 0 1.8.3l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1A1.7 1.7 0 0 0 19.4 9a1.7 1.7 0 0 0 0 1 1.7 1.7 0 0 0 1.5 1H21a2 2 0 1 1 0 4h-.1a1.7 1.7 0 0 0-1.5 1 1.7 1.7 0 0 0 0 1z"/></svg>
+          Ajustes
+        </button>
+      </nav>
+      <button class="fab" id="fab" type="button" aria-label="Novo compromisso">+</button>
+    </div>
+
+    <div class="toast" id="toast" role="status"></div>
+    <div class="modal" id="alert-modal" role="dialog" aria-modal="true" aria-labelledby="alert-title">
+      <div class="sheet">
+        <div class="eyebrow">Avisos</div>
+        <h2 class="h2" id="alert-title" style="margin: 8px 0 12px">Compromissos para lembrar</h2>
+        <div class="stack" id="alert-list"></div>
+        <button class="btn btn-primary" type="button" id="alert-ok" style="margin-top: 16px">Entendi</button>
+      </div>
+    </div>
+    <div class="modal" id="confirm-modal" role="dialog" aria-modal="true">
+      <div class="sheet">
+        <h2 class="h2" id="confirm-title">Confirmar</h2>
+        <p class="secondary" id="confirm-text" style="margin: 8px 0 16px"></p>
+        <div class="btn-row">
+          <button class="btn btn-ghost" type="button" id="confirm-no">Cancelar</button>
+          <button class="btn btn-danger" type="button" id="confirm-yes">Excluir</button>
+        </div>
+      </div>
+    </div>
+    <div class="modal" id="howto-modal" role="dialog" aria-modal="true">
+      <div class="sheet">
+        <h2 class="h2">Instalar o aplicativo</h2>
+        <div class="stack" style="margin-top: 12px; text-align: left">
+          <p><strong>iPhone:</strong> abra este link no Safari → botão Compartilhar → Adicionar à Tela de Início.</p>
+          <p><strong>Android:</strong> abra no Chrome → menu ⋮ → Instalar aplicativo.</p>
+          <p><strong>Computador:</strong> no Chrome ou Edge, clique no ícone de instalar na barra de endereço.</p>
+          <p class="caption">Os avisos na tela aparecem ao abrir o app. No celular, permita as notificações em Ajustes para tentar o alerta do sistema.</p>
+        </div>
+        <button class="btn btn-primary" type="button" id="howto-ok" style="margin-top: 16px">Fechar</button>
+      </div>
+    </div>
+    <div class="modal" id="pin-setup-modal" role="dialog" aria-modal="true">
+      <div class="sheet">
+        <h2 class="h2" id="pin-setup-title">Criar PIN de 4 dígitos</h2>
+        <p class="secondary" id="pin-setup-text">O PIN fica só neste aparelho.</p>
+        <div class="field" style="margin-top: 12px">
+          <input id="pin-setup-input" inputmode="numeric" maxlength="4" placeholder="••••" />
+        </div>
+        <div class="btn-row" style="margin-top: 12px">
+          <button class="btn btn-ghost" type="button" id="pin-setup-cancel">Cancelar</button>
+          <button class="btn btn-primary" type="button" id="pin-setup-ok">Salvar</button>
+        </div>
+      </div>
+    </div>
+
+    <script src="./vendor/xlsx.core.min.js"></script>
+    <script src="./app.js"></script>
+  </body>
+</html>
