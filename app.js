@@ -408,11 +408,11 @@ function showAlertModal(alerts) {
   if (!alerts.length) return;
   $('#alert-list').innerHTML = alerts
     .map((alert) => {
-      const cls = alert.kind === 'same_day' ? 'today' : alert.kind === '1d' ? 'soon' : 'week';
+      const cls = alert.kind === 'same_day' ? 'alert-today' : alert.kind === '1d' ? 'alert-soon' : 'alert-week';
       return `<div class="alert-banner ${cls}">
-        <div class="caption">${escapeHtml(alert.label)}</div>
-        <div class="h3" style="margin-top:4px">${escapeHtml(alert.item.clientName)}</div>
-        <div class="caption">${escapeHtml(relativeLabel(alert.item.date, alert.item.time))}${alert.item.courthouse ? ` · ${escapeHtml(alert.item.courthouse)}` : ''}</div>
+        <span class="alert-kicker">${escapeHtml(alert.label)}</span>
+        <span class="alert-name">${escapeHtml(alert.item.clientName)}</span>
+        <span class="alert-meta">${escapeHtml(relativeLabel(alert.item.date, alert.item.time))}${alert.item.courthouse ? ` · ${escapeHtml(alert.item.courthouse)}` : ''}</span>
       </div>`;
     })
     .join('');
@@ -456,27 +456,29 @@ function renderHome() {
   const parts = [];
 
   if (alerts.length) {
-    parts.push(`<div class="stack">${alerts
+    parts.push(`<div class="stack"><h3 class="h3">Avisos</h3>${alerts
       .map((alert) => {
-        const cls = alert.kind === 'same_day' ? 'today' : alert.kind === '1d' ? 'soon' : 'week';
+        const cls = alert.kind === 'same_day' ? 'alert-today' : alert.kind === '1d' ? 'alert-soon' : 'alert-week';
         const when = alert.kind === 'same_day' ? 'Hoje' : alert.kind === '1d' ? 'Amanhã' : alert.kind === '7d' ? 'Em 7 dias' : 'Em 10 dias';
-        return `<button class="alert-banner ${cls}" type="button" data-open="${escapeHtml(alert.item.id)}">
-          <div class="caption">${escapeHtml(when)} · ${escapeHtml(alert.label)}</div>
-          <div class="h3" style="margin-top:4px">${escapeHtml(alert.item.clientName)}</div>
-          <div class="caption">${escapeHtml(formatTimeBR(alert.item.time))}${alert.item.processNumber ? ` · ${escapeHtml(alert.item.processNumber)}` : ''}</div>
-        </button>`;
+        const bits = [formatTimeBR(alert.item.time), alert.item.courthouse, alert.item.processNumber].filter(Boolean);
+        return `<div class="alert-banner ${cls}" role="button" tabindex="0" data-open="${escapeHtml(alert.item.id)}">
+          <div class="alert-kicker">${escapeHtml(when)}</div>
+          <div class="alert-name">${escapeHtml(alert.item.clientName)}</div>
+          <div class="alert-meta">${escapeHtml(bits.join(' · '))}</div>
+        </div>`;
       })
       .join('')}</div>`);
   }
 
-  if (next) {
-    parts.push(`<button class="card" type="button" data-open="${escapeHtml(next.id)}" style="text-align:left;width:100%">
-      <div class="caption" style="color:var(--gold-deep)">Próximo compromisso</div>
-      <div class="h2" style="margin-top:6px">${escapeHtml(next.clientName)}</div>
-      <p class="secondary" style="margin-top:4px">${escapeHtml(relativeLabel(next.date, next.time))}${next.courthouse ? ` · ${escapeHtml(next.courthouse)}` : ''}</p>
-      <div class="meta"><span class="pill" style="background:var(--surface-alt)">${escapeHtml(formatTimeBR(next.time))}</span>${next.subject ? `<span class="pill" style="background:var(--surface-alt)">${escapeHtml(next.subject)}</span>` : ''}</div>
+  const nextAlreadyInAlerts = next && alerts.some((alert) => alert.item.id === next.id);
+  if (next && !nextAlreadyInAlerts) {
+    parts.push(`<button class="card card-btn" type="button" data-open="${escapeHtml(next.id)}">
+      <span class="caption" style="color:var(--gold-deep)">Próximo compromisso</span>
+      <span class="h2" style="display:block;margin-top:6px">${escapeHtml(next.clientName)}</span>
+      <span class="secondary" style="display:block;margin-top:4px">${escapeHtml(relativeLabel(next.date, next.time))}${next.courthouse ? ` · ${escapeHtml(next.courthouse)}` : ''}</span>
+      <span class="meta"><span class="pill" style="background:var(--surface-alt)">${escapeHtml(formatTimeBR(next.time))}</span>${next.subject ? `<span class="pill" style="background:var(--surface-alt)">${escapeHtml(next.subject)}</span>` : ''}</span>
     </button>`);
-  } else {
+  } else if (!next) {
     parts.push(emptyState('Nenhum compromisso cadastrado', 'Toque no + para registrar a próxima audiência, prazo ou reunião.'));
   }
 
