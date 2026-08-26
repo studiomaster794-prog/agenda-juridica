@@ -1,4 +1,4 @@
-const CACHE = 'agenda-juridica-pwa-v2';
+const CACHE = 'agenda-juridica-pwa-v3';
 const ASSETS = [
   './',
   './index.html',
