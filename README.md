@@ -6,7 +6,24 @@ Abra e instale neste link:
 
 Aplicativo simples para anotar audiências, prazos e compromissos. Abre no celular e no computador, funciona sem internet depois de instalado e **não precisa de Node, Expo nem loja de aplicativos**.
 
-Os dados ficam **somente neste aparelho**. Se for usar no celular e no computador, exporte uma cópia de segurança em Ajustes e importe no outro aparelho.
+Os dados ficam neste aparelho e, se você criar um **escritório compartilhado**, também na nuvem. Assim os dois celulares veem os mesmos processos.
+
+## Escritório compartilhado
+
+1. Uma pessoa abre **Ajustes → Criar escritório**.
+2. O aplicativo mostra um código, por exemplo `K7M2-9QPD`.
+3. No outro celular, **Ajustes → Entrar com um código** e digite o código.
+
+A partir daí, um compromisso novo, uma edição ou uma exclusão aparece nos dois aparelhos quando houver internet. Sem internet o aplicativo continua funcionando; a sincronização acontece sozinha quando a conexão volta.
+
+Na primeira vez o aplicativo pede para ligar a nuvem (conta gratuita no [Supabase](https://supabase.com)):
+
+1. Crie um projeto, região **South America (São Paulo)**.
+2. No **SQL Editor**, cole o arquivo `sync.sql` deste repositório e rode.
+3. Em **Project Settings → API**, copie o **Project URL** e a chave **anon public**.
+4. Cole os dois no aplicativo (ou no arquivo `cloud-config.js` para todos os aparelhos já receberem prontos).
+
+Não coloque nomes de clientes nem números de processo neste repositório do GitHub. O GitHub guarda o programa; a agenda fica na nuvem do escritório.
 
 ## O que o aplicativo faz
 

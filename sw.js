@@ -1,9 +1,12 @@
-const CACHE = 'agenda-juridica-pwa-v5';
+const CACHE = 'agenda-juridica-pwa-v6';
 const ASSETS = [
   './',
   './index.html',
   './styles.css',
   './app.js',
+  './cloud.js',
+  './cloud-config.js',
+  './sync.sql',
   './manifest.json',
   './vendor/xlsx.core.min.js',
   './icons/favicon.png',

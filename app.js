@@ -1,5 +1,5 @@
 const STORAGE_KEY = 'agenda-juridica-pwa-v1';
-const APP_VERSION = '1.0.0';
+const APP_VERSION = '1.1.0';
 
 const TYPES = [
   { value: 'audiencia', label: 'Audiência' },
@@ -43,8 +43,8 @@ const ONBOARDING = [
     text: 'Ao abrir o aplicativo, a tela mostra o que precisa de atenção. Se você permitir, o celular também tenta avisar.',
   },
   {
-    title: 'Seus dados ficam neste aparelho, mesmo sem internet.',
-    text: 'Instale na tela inicial e use como um aplicativo. Faça uma cópia de segurança em Ajustes quando quiser.',
+    title: 'Os aparelhos podem ficar iguais.',
+    text: 'Em Ajustes, crie um escritório e envie o código. A outra pessoa entra e passa a ver os mesmos processos, mesmo sem internet no momento.',
   },
 ];
 
@@ -84,7 +84,13 @@ const state = {
   pinUnlock: '',
   deferredPrompt: null,
   alertTimer: null,
+  office: { code: '', lastSyncAt: '', status: '', error: '' },
+  tombstones: { appointments: {}, subjects: {} },
+  syncing: false,
+  pendingOfficeAction: '',
 };
+
+let syncTimer = null;
 
 function pad(n) {
   return String(n).padStart(2, '0');
@@ -211,12 +217,26 @@ function load() {
     state.settings = { ...DEFAULT_SETTINGS, ...(data.settings || {}) };
     state.customSubjects = Array.isArray(data.customSubjects) ? data.customSubjects : [];
     state.shownAlerts = data.shownAlerts && typeof data.shownAlerts === 'object' ? data.shownAlerts : {};
+    if (data.office && typeof data.office === 'object') {
+      state.office = {
+        code: data.office.code || '',
+        lastSyncAt: data.office.lastSyncAt || '',
+        status: data.office.status || '',
+        error: data.office.error || '',
+      };
+    }
+    if (data.tombstones && typeof data.tombstones === 'object') {
+      state.tombstones = {
+        appointments: data.tombstones.appointments || {},
+        subjects: data.tombstones.subjects || {},
+      };
+    }
   } catch {
     /* dados locais ilegíveis: começa vazio */
   }
 }
 
-function save() {
+function persistLocal() {
   localStorage.setItem(
     STORAGE_KEY,
     JSON.stringify({
@@ -224,9 +244,199 @@ function save() {
       settings: state.settings,
       customSubjects: state.customSubjects,
       shownAlerts: state.shownAlerts,
+      office: state.office,
+      tombstones: state.tombstones,
       version: APP_VERSION,
     }),
   );
+}
+
+function save() {
+  persistLocal();
+  queueSync();
+}
+
+function queueSync() {
+  if (!state.office.code) return;
+  clearTimeout(syncTimer);
+  syncTimer = setTimeout(() => {
+    syncNow().catch(() => undefined);
+  }, 700);
+}
+
+function cloudRowsFromLocal(items, tombstones) {
+  const rows = (items || []).map((item) => ({
+    id: item.id,
+    payload: item,
+    updated_at: item.updatedAt || new Date().toISOString(),
+    deleted_at: null,
+  }));
+  Object.entries(tombstones || {}).forEach(([id, ts]) => {
+    if (rows.some((row) => row.id === id)) return;
+    rows.push({
+      id,
+      payload: {},
+      updated_at: ts,
+      deleted_at: ts,
+    });
+  });
+  return rows;
+}
+
+function applyRemote(remote) {
+  const appointments = AgendaCloud.mergeSide(state.appointments, remote.appointments, state.tombstones.appointments);
+  const subjects = AgendaCloud.mergeSide(state.customSubjects, remote.subjects, state.tombstones.subjects);
+  state.appointments = sortAppointments(appointments.items);
+  state.customSubjects = subjects.items.sort((a, b) => a.name.localeCompare(b.name, 'pt-BR'));
+  state.tombstones = { appointments: appointments.tombstones, subjects: subjects.tombstones };
+}
+
+async function syncNow(options = {}) {
+  if (!state.office.code || state.syncing) return false;
+  if (typeof AgendaCloud === 'undefined' || !AgendaCloud.getConfig().ready) {
+    state.office.status = 'error';
+    state.office.error = 'A nuvem ainda não foi configurada.';
+    persistLocal();
+    renderOfficePanel();
+    if (options.notify) toast(state.office.error, 'error');
+    return false;
+  }
+  state.syncing = true;
+  state.office.status = 'syncing';
+  renderOfficePanel();
+  try {
+    const remote = await AgendaCloud.pullOffice(state.office.code);
+    applyRemote(remote);
+    await AgendaCloud.pushItems(
+      state.office.code,
+      cloudRowsFromLocal(state.appointments, state.tombstones.appointments),
+      cloudRowsFromLocal(state.customSubjects, state.tombstones.subjects),
+    );
+    state.office.lastSyncAt = new Date().toISOString();
+    state.office.status = 'ok';
+    state.office.error = '';
+    persistLocal();
+    render();
+    return true;
+  } catch (err) {
+    state.office.status = navigator.onLine === false ? 'offline' : 'error';
+    state.office.error = err.message || 'Falha na sincronização';
+    persistLocal();
+    renderOfficePanel();
+    if (options.notify) toast(state.office.status === 'offline' ? 'Sem internet. Tentamos de novo quando voltar.' : 'Não foi possível sincronizar agora.', 'error');
+    return false;
+  } finally {
+    state.syncing = false;
+    renderOfficePanel();
+  }
+}
+
+async function copyText(value) {
+  try {
+    await navigator.clipboard.writeText(value);
+    return true;
+  } catch {
+    const input = document.createElement('textarea');
+    input.value = value;
+    input.setAttribute('readonly', '');
+    input.style.position = 'fixed';
+    input.style.left = '-9999px';
+    document.body.appendChild(input);
+    input.select();
+    const ok = document.execCommand('copy');
+    input.remove();
+    return ok;
+  }
+}
+
+function formatSyncTime(iso) {
+  if (!iso) return '';
+  const d = new Date(iso);
+  if (Number.isNaN(d.getTime())) return '';
+  return `${pad(d.getHours())}:${pad(d.getMinutes())}`;
+}
+
+function officeStatusText() {
+  if (!state.office.code) return '';
+  if (state.syncing || state.office.status === 'syncing') return 'Sincronizando os aparelhos…';
+  if (state.office.status === 'offline') return 'Sem internet. Os dados ficam neste celular até voltar a conexão.';
+  if (state.office.status === 'error') return state.office.error || 'Não sincronizou. Toque em Atualizar agora.';
+  if (state.office.lastSyncAt) return `Ligados. Última atualização às ${formatSyncTime(state.office.lastSyncAt)}.`;
+  return 'Escritório ligado. Toque em Atualizar agora se a outra pessoa já cadastrou algo.';
+}
+
+function renderOfficePanel() {
+  const connected = Boolean(state.office.code);
+  $('#office-off')?.classList.toggle('hidden', connected);
+  $('#office-on')?.classList.toggle('hidden', !connected);
+  const help = $('#office-help');
+  if (help) {
+    help.textContent = connected
+      ? 'Os aparelhos com este código veem os mesmos processos.'
+      : 'Crie um escritório neste celular e entre com o código no outro. Os processos ficam iguais nos dois.';
+  }
+  if (connected) {
+    const label = $('#office-code-label');
+    if (label) label.textContent = state.office.code;
+    const syncLabel = $('#office-sync-label');
+    if (syncLabel) syncLabel.textContent = officeStatusText();
+  }
+  const home = $('#home-office');
+  if (home) {
+    if (connected) {
+      home.textContent = state.syncing ? 'Sincronizando o escritório…' : `Escritório ${state.office.code}`;
+      home.classList.remove('hidden');
+    } else {
+      home.textContent = '';
+      home.classList.add('hidden');
+    }
+  }
+}
+
+async function ensureCloudReady(nextAction) {
+  if (typeof AgendaCloud !== 'undefined' && AgendaCloud.getConfig().ready) return true;
+  state.pendingOfficeAction = nextAction || '';
+  const cfg = typeof AgendaCloud !== 'undefined' ? AgendaCloud.getConfig() : { url: '', key: '' };
+  $('#cloud-url').value = cfg.url || '';
+  $('#cloud-key').value = cfg.key || '';
+  $('#office-cloud-modal').classList.add('show');
+  return false;
+}
+
+async function createSharedOffice() {
+  if (!(await ensureCloudReady('create'))) return;
+  try {
+    const created = await AgendaCloud.createOffice();
+    state.office = { code: created.code, lastSyncAt: '', status: 'syncing', error: '' };
+    persistLocal();
+    renderOfficePanel();
+    const ok = await syncNow({ notify: true });
+    $('#office-created-code').textContent = created.code;
+    $('#office-created-modal').classList.add('show');
+    toast(ok ? 'Escritório criado. Envie o código para o outro celular.' : 'Escritório criado. A sincronização tenta de novo em instantes.');
+  } catch (err) {
+    toast(err.message || 'Não foi possível criar o escritório.', 'error');
+  }
+}
+
+async function joinSharedOffice(rawCode) {
+  if (!(await ensureCloudReady('join'))) return;
+  const code = AgendaCloud.normalizeCode(rawCode);
+  if (!/^[A-Z0-9]{4}-[A-Z0-9]{4}$/.test(code)) {
+    toast('Digite o código no formato ABCD-EFGH.', 'error');
+    return;
+  }
+  try {
+    const joined = await AgendaCloud.joinOffice(code);
+    state.office = { code: joined.code, lastSyncAt: '', status: 'syncing', error: '' };
+    persistLocal();
+    const ok = await syncNow({ notify: true });
+    $('#office-join-modal').classList.remove('show');
+    toast(ok ? 'Aparelhos ligados. Os processos passam a ser os mesmos.' : 'Entrou no escritório. A sincronização tenta de novo em instantes.');
+    render();
+  } catch (err) {
+    toast(err.message === 'Código inválido' ? 'Esse código não existe. Confira com o outro aparelho.' : err.message || 'Não foi possível entrar.', 'error');
+  }
 }
 
 function allSubjects() {
@@ -639,6 +849,7 @@ function renderSettings() {
   $('#th-auto').textContent = state.settings.theme === 'automatico' ? 'Selecionado' : '';
   $('#th-claro').textContent = state.settings.theme === 'claro' ? 'Selecionado' : '';
   $('#th-escuro').textContent = state.settings.theme === 'escuro' ? 'Selecionado' : '';
+  renderOfficePanel();
 }
 
 function fillForm(item) {
@@ -740,6 +951,7 @@ function renderOnboarding(index = 0) {
 
 function render() {
   applyTheme();
+  renderOfficePanel();
   if (state.screen === 'home') renderHome();
   if (state.screen === 'calendar') renderCalendar();
   if (state.screen === 'list') renderList();
@@ -1125,6 +1337,7 @@ function startApp() {
   render();
   processAlerts(true);
   scheduleAlertCheck();
+  syncNow().catch(() => undefined);
 }
 
 function bind() {
@@ -1191,7 +1404,9 @@ function bind() {
     }
     const delSub = event.target.closest('[data-del-subject]');
     if (delSub) {
-      state.customSubjects = state.customSubjects.filter((item) => item.id !== delSub.dataset.delSubject);
+      const subjectId = delSub.dataset.delSubject;
+      state.customSubjects = state.customSubjects.filter((item) => item.id !== subjectId);
+      state.tombstones.subjects[subjectId] = new Date().toISOString();
       save();
       renderSubjects();
     }
@@ -1230,6 +1445,7 @@ function bind() {
     processAlerts(true);
     scheduleAlertCheck();
     requestNotifications().catch(() => undefined);
+    syncNow().catch(() => undefined);
   });
 
   $('#appt-form').addEventListener('submit', (event) => {
@@ -1252,7 +1468,8 @@ function bind() {
     const name = event.target.value.trim();
     if (!name) return;
     if (!allSubjects().some((item) => item.name.toLowerCase() === name.toLowerCase())) {
-      state.customSubjects.push({ id: createId(), name, color: '#8B6BB0', createdAt: new Date().toISOString() });
+      const now = new Date().toISOString();
+      state.customSubjects.push({ id: createId(), name, color: '#8B6BB0', createdAt: now, updatedAt: now });
       save();
     }
     state.formSubject = name;
@@ -1275,6 +1492,7 @@ function bind() {
       const ok = await confirmDialog('Excluir compromisso', `Excluir o compromisso de ${item.clientName}? Esta ação não pode ser desfeita.`);
       if (!ok) return;
       state.appointments = state.appointments.filter((appt) => appt.id !== item.id);
+      state.tombstones.appointments[item.id] = new Date().toISOString();
       save();
       toast('Compromisso excluído.');
       showScreen('home');
@@ -1362,6 +1580,94 @@ function bind() {
     render();
     processAlerts(true);
     scheduleAlertCheck();
+    syncNow().catch(() => undefined);
+  });
+
+  $('#btn-office-create').addEventListener('click', () => {
+    createSharedOffice().catch(() => undefined);
+  });
+  $('#btn-office-join').addEventListener('click', async () => {
+    if (!(await ensureCloudReady('join'))) return;
+    $('#office-join-input').value = '';
+    $('#office-join-modal').classList.add('show');
+    setTimeout(() => $('#office-join-input').focus(), 50);
+  });
+  $('#office-join-cancel').addEventListener('click', () => $('#office-join-modal').classList.remove('show'));
+  $('#office-join-ok').addEventListener('click', () => {
+    joinSharedOffice($('#office-join-input').value).catch(() => undefined);
+  });
+  $('#office-join-input').addEventListener('keydown', (event) => {
+    if (event.key === 'Enter') {
+      event.preventDefault();
+      joinSharedOffice($('#office-join-input').value).catch(() => undefined);
+    }
+  });
+  $('#office-code-row').addEventListener('click', async () => {
+    if (!state.office.code) return;
+    const ok = await copyText(state.office.code);
+    toast(ok ? 'Código copiado. Envie para o outro celular.' : 'Não foi possível copiar. Anote o código na tela.');
+  });
+  $('#btn-office-sync').addEventListener('click', () => {
+    syncNow({ notify: true }).catch(() => undefined);
+  });
+  $('#btn-office-leave').addEventListener('click', async () => {
+    const ok = await confirmDialog(
+      'Sair do escritório',
+      'Este celular para de receber as atualizações. Os compromissos continuam neste aparelho.',
+      'Sair',
+    );
+    if (!ok) return;
+    state.office = { code: '', lastSyncAt: '', status: '', error: '' };
+    persistLocal();
+    render();
+    toast('Este aparelho saiu do escritório.');
+  });
+  $('#office-created-ok').addEventListener('click', () => $('#office-created-modal').classList.remove('show'));
+  $('#office-created-copy').addEventListener('click', async () => {
+    if (!state.office.code) return;
+    const ok = await copyText(state.office.code);
+    toast(ok ? 'Código copiado.' : 'Anote o código na tela.');
+  });
+  $('#office-copy-sql').addEventListener('click', async () => {
+    try {
+      const sql = await fetch('./sync.sql').then((res) => {
+        if (!res.ok) throw new Error('sql');
+        return res.text();
+      });
+      const ok = await copyText(sql);
+      toast(ok ? 'SQL copiado. Cole no SQL Editor do Supabase e clique em Run.' : 'Não foi possível copiar o SQL.');
+    } catch {
+      toast('Abra o arquivo sync.sql na pasta do aplicativo e copie o texto.', 'error');
+    }
+  });
+  $('#office-cloud-cancel').addEventListener('click', () => {
+    state.pendingOfficeAction = '';
+    $('#office-cloud-modal').classList.remove('show');
+  });
+  $('#office-cloud-ok').addEventListener('click', async () => {
+    const url = $('#cloud-url').value.trim();
+    const key = $('#cloud-key').value.trim();
+    if (!/^https:\/\/[a-z0-9-]+\.supabase\.co\/?$/i.test(url.replace(/\/$/, ''))) {
+      toast('Cole o Project URL do Supabase, no formato https://xxxx.supabase.co.', 'error');
+      return;
+    }
+    if (key.length < 20) {
+      toast('Cole a chave anon public completa.', 'error');
+      return;
+    }
+    AgendaCloud.setLocalConfig(url.replace(/\/$/, ''), key);
+    $('#office-cloud-modal').classList.remove('show');
+    const next = state.pendingOfficeAction;
+    state.pendingOfficeAction = '';
+    if (next === 'create') {
+      await createSharedOffice();
+    } else if (next === 'join') {
+      $('#office-join-input').value = '';
+      $('#office-join-modal').classList.add('show');
+      setTimeout(() => $('#office-join-input').focus(), 50);
+    } else {
+      toast('Nuvem ligada neste aparelho.');
+    }
   });
 
   $('#btn-howto').addEventListener('click', () => $('#howto-modal').classList.add('show'));
@@ -1376,7 +1682,8 @@ function bind() {
     event.preventDefault();
     const name = $('#subject-name').value.trim();
     if (!name) return;
-    state.customSubjects.push({ id: createId(), name, color: '#8B6BB0', createdAt: new Date().toISOString() });
+    const now = new Date().toISOString();
+    state.customSubjects.push({ id: createId(), name, color: '#8B6BB0', createdAt: now, updatedAt: now });
     $('#subject-name').value = '';
     save();
     renderSubjects();
@@ -1390,7 +1697,18 @@ function bind() {
   $('#btn-export-json').addEventListener('click', () => {
     download(
       'agenda-juridica-backup.json',
-      JSON.stringify({ appointments: state.appointments, customSubjects: state.customSubjects, settings: state.settings, version: APP_VERSION }, null, 2),
+      JSON.stringify(
+        {
+          appointments: state.appointments,
+          customSubjects: state.customSubjects,
+          settings: state.settings,
+          office: { code: state.office.code },
+          tombstones: state.tombstones,
+          version: APP_VERSION,
+        },
+        null,
+        2,
+      ),
       'application/json',
     );
     toast('Cópia de segurança gerada.');
@@ -1500,7 +1818,13 @@ function bind() {
   });
 
   document.addEventListener('visibilitychange', () => {
-    if (document.visibilityState === 'visible') processAlerts(true);
+    if (document.visibilityState === 'visible') {
+      processAlerts(true);
+      syncNow().catch(() => undefined);
+    }
+  });
+  window.addEventListener('online', () => {
+    syncNow().catch(() => undefined);
   });
 
   if (navigator.serviceWorker) {
@@ -1526,5 +1850,8 @@ registerWorker();
 startApp();
 window.matchMedia('(prefers-color-scheme: dark)').addEventListener('change', applyTheme);
 setInterval(() => {
-  if (document.visibilityState === 'visible') processAlerts(false);
-}, 60 * 1000);
+  if (document.visibilityState === 'visible') {
+    processAlerts(false);
+    syncNow().catch(() => undefined);
+  }
+}, 45 * 1000);

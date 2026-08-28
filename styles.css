@@ -1049,6 +1049,40 @@ button.card.card-btn {
   overflow-wrap: anywhere;
 }
 
+.office-code {
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  letter-spacing: 0.12em;
+  font-weight: 700;
+  color: var(--gold-deep);
+  font-size: 14px;
+}
+
+.code-box {
+  margin-top: 16px;
+  padding: 18px 12px;
+  text-align: center;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  font-size: 28px;
+  font-weight: 700;
+  letter-spacing: 0.18em;
+  color: var(--gold-deep);
+  background: var(--surface-alt);
+  border: 1px dashed color-mix(in srgb, var(--gold) 45%, var(--border));
+  border-radius: var(--radius);
+}
+
+.setup-list {
+  margin: 14px 0 0;
+  padding-left: 18px;
+  color: var(--text-2);
+  line-height: 1.55;
+  font-size: 14px;
+}
+
+.setup-list li + li {
+  margin-top: 8px;
+}
+
 .hidden {
   display: none !important;
 }
