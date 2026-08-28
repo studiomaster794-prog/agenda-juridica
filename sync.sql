@@ -100,13 +100,13 @@ security definer
 set search_path = public
 as $$
 declare
-  found offices%rowtype;
+  office_row offices%rowtype;
 begin
-  select * into found from offices where code = agenda_normalize_code(p_code);
-  if not found then
+  select * into office_row from offices where code = agenda_normalize_code(p_code);
+  if office_row.id is null then
     raise exception 'Código inválido';
   end if;
-  return json_build_object('id', found.id, 'code', found.code);
+  return json_build_object('id', office_row.id, 'code', office_row.code);
 end;
 $$;
 

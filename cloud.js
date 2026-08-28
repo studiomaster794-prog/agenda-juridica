@@ -65,7 +65,10 @@
     }
     if (!res.ok) {
       const raw = data?.message || data?.hint || 'Falha na sincronização';
-      const message = String(raw).replace(/^ERROR:\s*/i, '').split('\n')[0];
+      let message = String(raw).replace(/^ERROR:\s*/i, '').split('\n')[0];
+      if (/argument of NOT must be type boolean/i.test(message) || /type offices/i.test(message)) {
+        message = 'Código inválido';
+      }
       throw new Error(message || 'Falha na sincronização');
     }
     return data;
@@ -75,8 +78,10 @@
     return rpc('create_office', {});
   }
 
-  function joinOffice(code) {
-    return rpc('join_office', { p_code: normalizeCode(code) });
+  async function joinOffice(code) {
+    const normalized = normalizeCode(code);
+    await rpc('pull_office', { p_code: normalized });
+    return { code: normalized };
   }
 
   function pullOffice(code) {

@@ -1,5 +1,5 @@
 const STORAGE_KEY = 'agenda-juridica-pwa-v1';
-const APP_VERSION = '1.1.1';
+const APP_VERSION = '1.1.2';
 
 const TYPES = [
   { value: 'audiencia', label: 'Audiência' },
@@ -467,7 +467,7 @@ async function joinSharedOffice(rawCode) {
     render();
   } catch (err) {
     const message =
-      err.message === 'Código inválido'
+      err.message === 'Código inválido' || /argument of NOT/i.test(err.message || '') || /type offices/i.test(err.message || '')
         ? 'Esse código não existe. Confira as 8 letras e números com o outro aparelho.'
         : err.message || 'Não foi possível entrar. Tente de novo.';
     setJoinError(message);
