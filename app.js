@@ -1,5 +1,5 @@
 const STORAGE_KEY = 'agenda-juridica-pwa-v1';
-const APP_VERSION = '1.1.0';
+const APP_VERSION = '1.1.1';
 
 const TYPES = [
   { value: 'audiencia', label: 'Audiência' },
@@ -87,6 +87,7 @@ const state = {
   office: { code: '', lastSyncAt: '', status: '', error: '' },
   tombstones: { appointments: {}, subjects: {} },
   syncing: false,
+  joining: false,
   pendingOfficeAction: '',
 };
 
@@ -419,13 +420,43 @@ async function createSharedOffice() {
   }
 }
 
+function formatOfficeCodeInput(value) {
+  const raw = String(value || '')
+    .toUpperCase()
+    .replace(/[^A-Z0-9]/g, '')
+    .slice(0, 8);
+  if (raw.length <= 4) return raw;
+  return `${raw.slice(0, 4)}-${raw.slice(4)}`;
+}
+
+function setJoinError(message) {
+  const el = $('#office-join-error');
+  if (!el) return;
+  el.textContent = message || '';
+  el.classList.toggle('hidden', !message);
+}
+
+function setJoinBusy(busy) {
+  state.joining = busy;
+  const btn = $('#office-join-ok');
+  const input = $('#office-join-input');
+  if (btn) {
+    btn.disabled = busy;
+    btn.textContent = busy ? 'Entrando…' : 'Entrar';
+  }
+  if (input) input.disabled = busy;
+}
+
 async function joinSharedOffice(rawCode) {
+  if (state.joining) return;
+  setJoinError('');
   if (!(await ensureCloudReady('join'))) return;
   const code = AgendaCloud.normalizeCode(rawCode);
   if (!/^[A-Z0-9]{4}-[A-Z0-9]{4}$/.test(code)) {
-    toast('Digite o código no formato ABCD-EFGH.', 'error');
+    setJoinError('Digite as 8 letras e números do código. O traço entra sozinho.');
     return;
   }
+  setJoinBusy(true);
   try {
     const joined = await AgendaCloud.joinOffice(code);
     state.office = { code: joined.code, lastSyncAt: '', status: 'syncing', error: '' };
@@ -435,7 +466,14 @@ async function joinSharedOffice(rawCode) {
     toast(ok ? 'Aparelhos ligados. Os processos passam a ser os mesmos.' : 'Entrou no escritório. A sincronização tenta de novo em instantes.');
     render();
   } catch (err) {
-    toast(err.message === 'Código inválido' ? 'Esse código não existe. Confira com o outro aparelho.' : err.message || 'Não foi possível entrar.', 'error');
+    const message =
+      err.message === 'Código inválido'
+        ? 'Esse código não existe. Confira as 8 letras e números com o outro aparelho.'
+        : err.message || 'Não foi possível entrar. Tente de novo.';
+    setJoinError(message);
+    toast(message, 'error');
+  } finally {
+    setJoinBusy(false);
   }
 }
 
@@ -1592,9 +1630,20 @@ function bind() {
     $('#office-join-modal').classList.add('show');
     setTimeout(() => $('#office-join-input').focus(), 50);
   });
-  $('#office-join-cancel').addEventListener('click', () => $('#office-join-modal').classList.remove('show'));
+  $('#office-join-cancel').addEventListener('click', () => {
+    if (state.joining) return;
+    $('#office-join-modal').classList.remove('show');
+  });
   $('#office-join-ok').addEventListener('click', () => {
     joinSharedOffice($('#office-join-input').value).catch(() => undefined);
+  });
+  $('#office-join-input').addEventListener('input', (event) => {
+    const formatted = formatOfficeCodeInput(event.target.value);
+    event.target.value = formatted;
+    setJoinError('');
+    if (formatted.replace('-', '').length === 8) {
+      joinSharedOffice(formatted).catch(() => undefined);
+    }
   });
   $('#office-join-input').addEventListener('keydown', (event) => {
     if (event.key === 'Enter') {
@@ -1647,12 +1696,29 @@ function bind() {
   $('#office-cloud-ok').addEventListener('click', async () => {
     const url = $('#cloud-url').value.trim();
     const key = $('#cloud-key').value.trim();
+    const cloudError = $('#office-cloud-error');
+    const showCloudError = (message) => {
+      if (cloudError) {
+        cloudError.textContent = message;
+        cloudError.classList.remove('hidden');
+      }
+      toast(message, 'error');
+    };
+    if (cloudError) cloudError.classList.add('hidden');
+    const maybeCode = AgendaCloud.normalizeCode(url || key);
+    if (/^[A-Z0-9]{4}-[A-Z0-9]{4}$/.test(maybeCode)) {
+      $('#office-cloud-modal').classList.remove('show');
+      $('#office-join-input').value = maybeCode;
+      $('#office-join-modal').classList.add('show');
+      await joinSharedOffice(maybeCode);
+      return;
+    }
     if (!/^https:\/\/[a-z0-9-]+\.supabase\.co\/?$/i.test(url.replace(/\/$/, ''))) {
-      toast('Cole o Project URL do Supabase, no formato https://xxxx.supabase.co.', 'error');
+      showCloudError('Aqui não é o código do escritório. Cole o endereço https://....supabase.co, ou toque em Cancelar e use Entrar com um código.');
       return;
     }
     if (key.length < 20) {
-      toast('Cole a chave anon public completa.', 'error');
+      showCloudError('Cole a chave Publishable / anon completa.');
       return;
     }
     AgendaCloud.setLocalConfig(url.replace(/\/$/, ''), key);

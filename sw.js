@@ -1,4 +1,4 @@
-const CACHE = 'agenda-juridica-pwa-v6';
+const CACHE = 'agenda-juridica-pwa-v7';
 const ASSETS = [
   './',
   './index.html',
@@ -34,19 +34,31 @@ self.addEventListener('activate', (event) => {
 self.addEventListener('fetch', (event) => {
   const request = event.request;
   if (request.method !== 'GET') return;
+  const path = new URL(request.url).pathname;
+  const networkFirst = /\.(js|css|html|sql)$/.test(path) || path.endsWith('/');
   event.respondWith(
-    caches.match(request).then((cached) => {
-      const fetched = fetch(request)
-        .then((response) => {
-          if (response && response.ok && response.type === 'basic') {
-            const copy = response.clone();
-            caches.open(CACHE).then((cache) => cache.put(request, copy));
-          }
-          return response;
-        })
-        .catch(() => cached);
-      return cached || fetched;
-    }),
+    networkFirst
+      ? fetch(request)
+          .then((response) => {
+            if (response && response.ok) {
+              const copy = response.clone();
+              caches.open(CACHE).then((cache) => cache.put(request, copy));
+            }
+            return response;
+          })
+          .catch(() => caches.match(request))
+      : caches.match(request).then((cached) => {
+          const fetched = fetch(request)
+            .then((response) => {
+              if (response && response.ok && response.type === 'basic') {
+                const copy = response.clone();
+                caches.open(CACHE).then((cache) => cache.put(request, copy));
+              }
+              return response;
+            })
+            .catch(() => cached);
+          return cached || fetched;
+        }),
   );
 });
 

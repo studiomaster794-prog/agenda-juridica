@@ -1,5 +1,9 @@
 (function (global) {
   const LOCAL_CONFIG_KEY = 'agenda-juridica-cloud-config';
+  const FALLBACK = {
+    supabaseUrl: 'https://dfbjrpokaspdtjkonubg.supabase.co',
+    supabaseAnonKey: 'sb_publishable_FVh5az2pjXg3zF7Hs7iywA_PTBaQaSq',
+  };
 
   function readLocalConfig() {
     try {
@@ -12,8 +16,8 @@
   function getConfig() {
     const file = global.AGENDA_CLOUD || {};
     const local = readLocalConfig() || {};
-    const url = String(file.supabaseUrl || local.supabaseUrl || '').trim();
-    const key = String(file.supabaseAnonKey || local.supabaseAnonKey || '').trim();
+    const url = String(file.supabaseUrl || local.supabaseUrl || FALLBACK.supabaseUrl || '').trim();
+    const key = String(file.supabaseAnonKey || local.supabaseAnonKey || FALLBACK.supabaseAnonKey || '').trim();
     return {
       url,
       key,

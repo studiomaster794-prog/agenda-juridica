@@ -186,7 +186,7 @@
           <div>
             <div class="group-title">Sobre</div>
             <div class="group">
-              <div class="setting-row"><span>Agenda Jurídica</span><span class="caption">1.1.0</span></div>
+              <div class="setting-row"><span>Agenda Jurídica</span><span class="caption">1.1.1</span></div>
               <div class="setting-row"><span>Fuso horário</span><span class="caption">America/Sao_Paulo</span></div>
               <button class="setting-row" type="button" id="btn-howto">Como instalar neste aparelho</button>
             </div>
@@ -344,10 +344,11 @@
     <div class="modal" id="office-join-modal" role="dialog" aria-modal="true">
       <div class="sheet">
         <h2 class="h2">Entrar no escritório</h2>
-        <p class="secondary" style="margin-top: 8px">Digite o código que aparece em Ajustes no outro aparelho.</p>
+        <p class="secondary" style="margin-top: 8px">Digite as 8 letras e números. O traço entra sozinho. Exemplo: K7M2-9QPD.</p>
         <div class="field" style="margin-top: 12px">
           <label for="office-join-input">Código</label>
-          <input id="office-join-input" inputmode="text" autocomplete="off" autocapitalize="characters" spellcheck="false" placeholder="ABCD-EFGH" maxlength="9" />
+          <input id="office-join-input" enterkeyhint="go" autocomplete="off" autocapitalize="characters" spellcheck="false" placeholder="ABCD-EFGH" maxlength="9" />
+          <p class="error hidden" id="office-join-error"></p>
         </div>
         <div class="btn-row" style="margin-top: 12px">
           <button class="btn btn-ghost" type="button" id="office-join-cancel">Cancelar</button>
@@ -386,6 +387,7 @@
           <label for="cloud-key">Chave da nuvem (anon public)</label>
           <input id="cloud-key" autocomplete="off" spellcheck="false" placeholder="eyJ..." />
         </div>
+        <p class="error hidden" id="office-cloud-error" style="margin-top: 10px"></p>
         <div class="btn-row" style="margin-top: 12px">
           <button class="btn btn-ghost" type="button" id="office-cloud-cancel">Agora não</button>
           <button class="btn btn-primary" type="button" id="office-cloud-ok">Salvar e continuar</button>

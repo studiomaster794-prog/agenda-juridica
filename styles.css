@@ -874,7 +874,7 @@ button.card.card-btn {
   opacity: 0;
   pointer-events: none;
   transition: 0.22s var(--ease);
-  z-index: 40;
+  z-index: 80;
   max-width: min(520px, calc(100% - 32px));
   font-weight: 600;
   font-size: 14px;
