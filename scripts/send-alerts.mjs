@@ -116,7 +116,7 @@ async function sendOffice(code, clock) {
     .map((row) => ({ id: row.id, ...row.payload }));
   const ready = devices.filter((device) => {
     const target = minutesOf(device.alertTime);
-    return device.lastSentOn !== clock.day && clock.minutes >= target && clock.minutes < target + 15;
+    return device.lastSentOn !== clock.day && clock.minutes >= target;
   });
   if (!ready.length) return 0;
   const due = dueItems(remote.appointments, clock.day);
@@ -128,19 +128,19 @@ async function sendOffice(code, clock) {
       endpoint: device.endpoint,
       keys: { p256dh: device.p256dh, auth: device.auth },
     };
-    let ok = true;
+    let deviceSent = 0;
     for (const alert of due) {
       try {
         await webpush.sendNotification(subscription, JSON.stringify({ title: alert.label, body: alert.body, tag: alert.tag }), {
           TTL: 6 * 60 * 60,
         });
         sent += 1;
+        deviceSent += 1;
       } catch (error) {
-        const status = error?.statusCode;
-        if (status === 404 || status === 410) ok = false;
+        console.log(`push falhou ${error?.statusCode || 'erro'}`);
       }
     }
-    if (ok) {
+    if (deviceSent > 0) {
       touched.push({
         id: device.id,
         payload: { ...device, lastSentOn: clock.day, updatedAt: new Date().toISOString() },
