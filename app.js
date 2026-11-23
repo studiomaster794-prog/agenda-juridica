@@ -1,5 +1,6 @@
 const STORAGE_KEY = 'agenda-juridica-pwa-v1';
-const APP_VERSION = '1.2.2';
+const APP_VERSION = '1.2.3';
+const VAPID_PUBLIC_KEY = 'BLukBOqlafgWjKHu3zENnaALNFQX_tZ7rWZ8FFqZdnuqyFAnnxA-sqz2G8Dnl-NNm-e0gAVtwZXvxISFJ0P4IHs';
 
 const TYPES = [
   { value: 'audiencia', label: 'Audiência' },
@@ -321,7 +322,7 @@ function applyRemote(remote) {
   state.appointments = sortAppointments(
     appointments.items.map(normalizeAppointment).filter((item) => item && item.date),
   );
-  state.customSubjects = subjects.items.sort((a, b) => a.name.localeCompare(b.name, 'pt-BR'));
+  state.customSubjects = subjects.items.sort((a, b) => String(a.name || '').localeCompare(String(b.name || ''), 'pt-BR'));
   state.tombstones = { appointments: appointments.tombstones, subjects: subjects.tombstones };
 }
 
@@ -356,6 +357,7 @@ async function syncNow(options = {}) {
     persistLocal();
     render();
     await processAlerts(Boolean(options.alerts));
+    await registerPushDevice();
     return true;
   } catch (err) {
     state.office.status = navigator.onLine === false ? 'offline' : 'error';
@@ -412,7 +414,7 @@ function renderOfficePanel() {
   const help = $('#office-help');
   if (help) {
     help.textContent = connected
-      ? 'Os aparelhos com este código veem os mesmos processos. No iPhone, o aviso cai ao abrir o aplicativo — deixe-o na tela inicial e permita as notificações.'
+      ? 'Os aparelhos com este código veem os mesmos processos. O aviso sai no horário marcado, mesmo com o aplicativo fechado, se as notificações estiverem permitidas.'
       : 'Crie um código de 8 dígitos neste celular e envie para o outro. Os processos ficam iguais nos dois.';
   }
   if (connected) {
@@ -580,8 +582,12 @@ async function joinSharedOffice(rawCode) {
   }
 }
 
+function visibleSubjects() {
+  return state.customSubjects.filter((item) => item.kind !== 'push-device');
+}
+
 function allSubjects() {
-  return [...SUBJECTS, ...state.customSubjects];
+  return [...SUBJECTS, ...visibleSubjects()];
 }
 
 function subjectColor(name) {
@@ -810,13 +816,40 @@ async function processAlerts(fromUserOpen = false) {
   }
   if (!alerts.length) return;
   const freshModal = alerts.filter((alert) => !alert.shown);
-  const freshOs = alerts.filter((alert) => !alert.osShown);
   if (fromUserOpen && freshModal.length) {
     showAlertModal(freshModal);
     markShown(freshModal, 'modal');
   }
+}
+
+function reminderOn(value) {
+  return value === undefined || value === null ? true : Boolean(value);
+}
+
+function scheduledAlerts(now = new Date()) {
+  const results = [];
+  for (const item of activeAppointments()) {
+    const diff = daysUntil(item.date, now);
+    const push = (kind, label) => {
+      results.push({
+        item,
+        kind,
+        label,
+        shown: alertWasShown(item, kind, 'os', now),
+      });
+    };
+    if (diff === 0 && reminderOn(item.reminderSameDay)) push('same_day', `${typeLabel(item.type)} hoje`);
+    if (diff === 1 && reminderOn(item.reminder1d)) push('1d', `${typeLabel(item.type)} amanhã`);
+    if (diff === 7 && reminderOn(item.reminder7d)) push('7d', `${typeLabel(item.type)} daqui a 7 dias`);
+    if (diff === 10 && item.reminder10d) push('10d', `${typeLabel(item.type)} daqui a 10 dias`);
+  }
+  return results;
+}
+
+async function deliverScheduledNotifications() {
+  const alerts = scheduledAlerts().filter((alert) => !alert.shown);
   const notified = [];
-  for (const alert of freshOs) {
+  for (const alert of alerts) {
     if (await fireBrowserNotification(alert)) notified.push(alert);
   }
   if (notified.length) markShown(notified, 'os');
@@ -829,10 +862,62 @@ function scheduleAlertCheck() {
   const next = new Date();
   next.setHours(h || 8, m || 0, 0, 0);
   if (next <= now) next.setDate(next.getDate() + 1);
+  const delay = next.getTime() - now.getTime();
+  const chunk = Math.min(delay, 6 * 60 * 60 * 1000);
   state.alertTimer = setTimeout(() => {
-    processAlerts(true);
+    if (chunk === delay) deliverScheduledNotifications();
     scheduleAlertCheck();
-  }, Math.min(next.getTime() - now.getTime(), 6 * 60 * 60 * 1000));
+  }, chunk);
+}
+
+function urlBase64ToUint8Array(base64String) {
+  const padding = '='.repeat((4 - (base64String.length % 4)) % 4);
+  const base64 = (base64String + padding).replace(/-/g, '+').replace(/_/g, '/');
+  const raw = atob(base64);
+  const output = new Uint8Array(raw.length);
+  for (let i = 0; i < raw.length; i += 1) output[i] = raw.charCodeAt(i);
+  return output;
+}
+
+async function registerPushDevice() {
+  if (!state.office.code || !state.settings.notificationsEnabled) return;
+  if (!('serviceWorker' in navigator) || !('PushManager' in window) || !('Notification' in window)) return;
+  if (Notification.permission !== 'granted') return;
+  try {
+    const ready = await navigator.serviceWorker.ready;
+    let subscription = await ready.pushManager.getSubscription();
+    if (!subscription) {
+      subscription = await ready.pushManager.subscribe({
+        userVisibleOnly: true,
+        applicationServerKey: urlBase64ToUint8Array(VAPID_PUBLIC_KEY),
+      });
+    }
+    const json = subscription.toJSON();
+    const endpoint = json.endpoint || '';
+    const p256dh = json.keys?.p256dh || '';
+    const auth = json.keys?.auth || '';
+    if (!endpoint || !p256dh || !auth) return;
+    const id = `push-${endpoint.slice(-24).replace(/[^a-zA-Z0-9]/g, '')}`;
+    const alertTime = state.settings.defaultAlertTime || '08:00';
+    const existing = state.customSubjects.find((item) => item.kind === 'push-device' && item.endpoint === endpoint);
+    if (existing && existing.alertTime === alertTime && existing.p256dh === p256dh && existing.auth === auth) return;
+    const now = new Date().toISOString();
+    const device = {
+      id: existing?.id || id,
+      name: 'Celular',
+      kind: 'push-device',
+      endpoint,
+      p256dh,
+      auth,
+      alertTime,
+      createdAt: existing?.createdAt || now,
+      updatedAt: now,
+    };
+    state.customSubjects = [...state.customSubjects.filter((item) => item.id !== device.id), device];
+    save();
+  } catch {
+    /* este aparelho não aceitou o aviso com o aplicativo fechado */
+  }
 }
 
 function renderHome() {
@@ -1110,8 +1195,9 @@ function renderDetail() {
 }
 
 function renderSubjects() {
-  $('#subject-list').innerHTML = state.customSubjects.length
-    ? state.customSubjects
+  const subjects = visibleSubjects();
+  $('#subject-list').innerHTML = subjects.length
+    ? subjects
         .map(
           (subject) => `<div class="card row" style="justify-content:space-between">
             <span>${escapeHtml(subject.name)}</span>
@@ -1483,6 +1569,7 @@ async function requestNotifications() {
       state.settings.notificationsEnabled = true;
       save();
       renderSettings();
+      await registerPushDevice();
       return true;
     }
     return false;
@@ -1717,6 +1804,7 @@ function bind() {
     state.settings.defaultAlertTime = e.target.value || '08:00';
     save();
     scheduleAlertCheck();
+    registerPushDevice().catch(() => undefined);
   });
 
   $('#set-pin-btn').addEventListener('click', async () => {
@@ -2099,8 +2187,5 @@ registerWorker();
 startApp();
 window.matchMedia('(prefers-color-scheme: dark)').addEventListener('change', applyTheme);
 setInterval(() => {
-  if (document.visibilityState === 'visible') {
-    processAlerts(false);
-    syncNow().catch(() => undefined);
-  }
+  if (document.visibilityState === 'visible') syncNow().catch(() => undefined);
 }, 45 * 1000);

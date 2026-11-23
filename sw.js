@@ -1,4 +1,4 @@
-const CACHE = 'agenda-juridica-pwa-v11';
+const CACHE = 'agenda-juridica-pwa-v12';
 const ASSETS = [
   './',
   './index.html',
@@ -74,6 +74,24 @@ self.addEventListener('notificationclick', (event) => {
       }
       if (self.clients.openWindow) return self.clients.openWindow('./');
       return undefined;
+    }),
+  );
+});
+
+self.addEventListener('push', (event) => {
+  let data = {};
+  try {
+    data = event.data ? event.data.json() : {};
+  } catch {
+    data = { title: 'Agenda Jurídica', body: 'Você tem um compromisso.' };
+  }
+  event.waitUntil(
+    self.registration.showNotification(data.title || 'Agenda Jurídica', {
+      body: data.body || 'Você tem um compromisso.',
+      icon: './icons/icon-192.png',
+      badge: './icons/icon-192.png',
+      tag: data.tag || 'agenda-juridica',
+      renotify: true,
     }),
   );
 });
