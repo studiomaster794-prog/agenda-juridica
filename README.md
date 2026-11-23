@@ -10,9 +10,9 @@ Os dados ficam neste aparelho e, se você criar um **escritório compartilhado**
 
 ## Escritório compartilhado
 
-1. Uma pessoa abre **Ajustes → Criar escritório**.
-2. O aplicativo mostra um código, por exemplo `K7M2-9QPD`.
-3. No outro celular, **Ajustes → Entrar com um código** e digite o código.
+1. Uma pessoa abre **Ajustes → Criar escritório** (ou **Escolher os 8 dígitos**).
+2. O aplicativo mostra um código, por exemplo `4829-1736`.
+3. No outro celular, **Ajustes → Entrar com um código** e digite os 8 números.
 
 A partir daí, um compromisso novo, uma edição ou uma exclusão aparece nos dois aparelhos quando houver internet. Sem internet o aplicativo continua funcionando; a sincronização acontece sozinha quando a conexão volta.
 
@@ -43,7 +43,7 @@ Ao abrir o aplicativo (e enquanto ele estiver aberto), a tela mostra um alerta s
 
 Se a permissão de notificações for aceita, o celular também tenta mostrar um aviso do sistema.
 
-**Limite importante:** um site, mesmo instalado, não acorda o iPhone (e alguns Androids) com o aplicativo totalmente fechado, como um app da App Store. O jeito mais confiável é abrir a Agenda de manhã: os avisos do dia aparecem na hora. O horário padrão dos alertas é 08:00 e pode ser mudado em Ajustes.
+**Limite importante:** um site, mesmo instalado, não acorda o iPhone (e alguns Androids) com o aplicativo totalmente fechado, como um app da App Store. Depois de ligar o escritório compartilhado, o outro celular precisa **abrir o aplicativo** para receber os processos e ver os avisos. O jeito mais confiável é abrir a Agenda de manhã: os avisos do dia (hoje, amanhã e nos próximos 7 dias) aparecem na hora. O horário padrão dos alertas é 08:00 e pode ser mudado em Ajustes.
 
 ## Como instalar no celular
 

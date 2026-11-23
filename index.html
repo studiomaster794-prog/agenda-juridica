@@ -132,29 +132,35 @@
           </div>
           <div>
             <div class="group-title">Escritório compartilhado</div>
-            <p class="caption" id="office-help" style="margin: 0 6px 8px">Crie um escritório neste celular e entre com o código no outro. Os processos ficam iguais nos dois.</p>
+            <p class="caption" id="office-help" style="margin: 0 6px 8px">Crie um código de 8 dígitos neste celular e envie para o outro. Os processos ficam iguais nos dois.</p>
             <div class="group" id="office-off">
               <button class="setting-row" type="button" id="btn-office-create">
                 <span>Criar escritório
-                  <small class="caption" style="display: block">Gera um código para a outra pessoa entrar</small>
+                  <small class="caption" style="display: block">Gera um código de 8 dígitos para enviar</small>
+                </span>
+              </button>
+              <button class="setting-row" type="button" id="btn-office-choose">
+                <span>Escolher os 8 dígitos
+                  <small class="caption" style="display: block">Defina o código que a outra pessoa vai digitar</small>
                 </span>
               </button>
               <button class="setting-row" type="button" id="btn-office-join">
                 <span>Entrar com um código
-                  <small class="caption" style="display: block">Use o código que já existe no outro aparelho</small>
+                  <small class="caption" style="display: block">Use o código de 8 dígitos do outro aparelho</small>
                 </span>
               </button>
             </div>
             <div class="group hidden" id="office-on">
               <button class="setting-row" type="button" id="office-code-row">
                 <span>Código do escritório
-                  <small class="caption" style="display: block">Toque para copiar e enviar</small>
+                  <small class="caption" style="display: block">Toque para copiar</small>
                 </span>
                 <span class="office-code" id="office-code-label"></span>
               </button>
               <div class="setting-row">
                 <span id="office-sync-label">Sincronizando…</span>
               </div>
+              <button class="setting-row" type="button" id="btn-office-share">Enviar código</button>
               <button class="setting-row" type="button" id="btn-office-sync">Atualizar agora</button>
               <button class="setting-row" type="button" id="btn-office-leave">Sair do escritório</button>
             </div>
@@ -186,7 +192,7 @@
           <div>
             <div class="group-title">Sobre</div>
             <div class="group">
-              <div class="setting-row"><span>Agenda Jurídica</span><span class="caption">1.1.2</span></div>
+              <div class="setting-row"><span>Agenda Jurídica</span><span class="caption">1.2.2</span></div>
               <div class="setting-row"><span>Fuso horário</span><span class="caption">America/Sao_Paulo</span></div>
               <button class="setting-row" type="button" id="btn-howto">Como instalar neste aparelho</button>
             </div>
@@ -344,10 +350,10 @@
     <div class="modal" id="office-join-modal" role="dialog" aria-modal="true">
       <div class="sheet">
         <h2 class="h2">Entrar no escritório</h2>
-        <p class="secondary" style="margin-top: 8px">Digite as 8 letras e números. O traço entra sozinho. Exemplo: K7M2-9QPD.</p>
+        <p class="secondary" style="margin-top: 8px">Digite o código de 8 dígitos. O traço entra sozinho. Exemplo: 4829-1736.</p>
         <div class="field" style="margin-top: 12px">
           <label for="office-join-input">Código</label>
-          <input id="office-join-input" enterkeyhint="go" autocomplete="off" autocapitalize="characters" spellcheck="false" placeholder="ABCD-EFGH" maxlength="9" />
+          <input id="office-join-input" enterkeyhint="go" inputmode="numeric" autocomplete="off" autocapitalize="characters" spellcheck="false" placeholder="1234-5678" maxlength="9" />
           <p class="error hidden" id="office-join-error"></p>
         </div>
         <div class="btn-row" style="margin-top: 12px">
@@ -356,15 +362,31 @@
         </div>
       </div>
     </div>
+    <div class="modal" id="office-choose-modal" role="dialog" aria-modal="true">
+      <div class="sheet">
+        <h2 class="h2">Escolher os 8 dígitos</h2>
+        <p class="secondary" style="margin-top: 8px">Digite o código que a outra pessoa vai usar no celular dela. O traço entra sozinho.</p>
+        <div class="field" style="margin-top: 12px">
+          <label for="office-choose-input">Código</label>
+          <input id="office-choose-input" enterkeyhint="go" inputmode="numeric" autocomplete="off" spellcheck="false" placeholder="1234-5678" maxlength="9" />
+          <p class="error hidden" id="office-choose-error"></p>
+        </div>
+        <div class="btn-row" style="margin-top: 12px">
+          <button class="btn btn-ghost" type="button" id="office-choose-cancel">Cancelar</button>
+          <button class="btn btn-primary" type="button" id="office-choose-ok">Criar</button>
+        </div>
+      </div>
+    </div>
     <div class="modal" id="office-created-modal" role="dialog" aria-modal="true">
       <div class="sheet">
-        <h2 class="h2">Escritório criado</h2>
-        <p class="secondary" style="margin-top: 8px">Anote este código e envie para o outro celular. Lá, abra Ajustes e toque em Entrar com um código.</p>
+        <h2 class="h2">Código de 8 dígitos</h2>
+        <p class="secondary" style="margin-top: 8px">Envie este código. No outro celular, abra Ajustes e toque em Entrar com um código.</p>
         <div class="code-box" id="office-created-code"></div>
         <div class="btn-row" style="margin-top: 12px">
-          <button class="btn btn-ghost" type="button" id="office-created-copy">Copiar código</button>
-          <button class="btn btn-primary" type="button" id="office-created-ok">Pronto</button>
+          <button class="btn btn-ghost" type="button" id="office-created-copy">Copiar</button>
+          <button class="btn btn-primary" type="button" id="office-created-share">Enviar</button>
         </div>
+        <button class="btn btn-ghost" type="button" id="office-created-ok" style="margin-top: 8px">Pronto</button>
       </div>
     </div>
     <div class="modal" id="office-cloud-modal" role="dialog" aria-modal="true">

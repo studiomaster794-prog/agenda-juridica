@@ -55,12 +55,15 @@ returns text
 language plpgsql
 as $$
 declare
-  alphabet text := 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
   result text := '';
   i int;
 begin
-  for i in 1..8 loop
-    result := result || substr(alphabet, 1 + floor(random() * length(alphabet))::int, 1);
+  loop
+    result := '';
+    for i in 1..8 loop
+      result := result || (floor(random() * 10)::int)::text;
+    end loop;
+    exit when result !~ '^([0-9])\1{7}$';
   end loop;
   return substr(result, 1, 4) || '-' || substr(result, 5, 4);
 end;
@@ -93,6 +96,32 @@ begin
 end;
 $$;
 
+create or replace function create_office_with_code(p_code text)
+returns json
+language plpgsql
+security definer
+set search_path = public
+as $$
+declare
+  new_code text;
+  new_id uuid;
+begin
+  new_code := agenda_normalize_code(p_code);
+  if new_code !~ '^[0-9]{4}-[0-9]{4}$' then
+    raise exception 'O código precisa ter 8 dígitos';
+  end if;
+  if regexp_replace(new_code, '[^0-9]', '', 'g') ~ '^([0-9])\1{7}$' then
+    raise exception 'Escolha um código com dígitos misturados';
+  end if;
+  begin
+    insert into offices (code) values (new_code) returning id into new_id;
+  exception when unique_violation then
+    raise exception 'Esse código já está em uso. Escolha outro.';
+  end;
+  return json_build_object('id', new_id, 'code', new_code);
+end;
+$$;
+
 create or replace function join_office(p_code text)
 returns json
 language plpgsql
@@ -103,7 +132,7 @@ declare
   office_row offices%rowtype;
 begin
   select * into office_row from offices where code = agenda_normalize_code(p_code);
-  if office_row.id is null then
+  if not found then
     raise exception 'Código inválido';
   end if;
   return json_build_object('id', office_row.id, 'code', office_row.code);
@@ -215,6 +244,7 @@ revoke all on function agenda_normalize_code(text) from public, anon, authentica
 revoke all on function agenda_generate_office_code() from public, anon, authenticated;
 
 grant execute on function create_office() to anon, authenticated;
+grant execute on function create_office_with_code(text) to anon, authenticated;
 grant execute on function join_office(text) to anon, authenticated;
 grant execute on function pull_office(text) to anon, authenticated;
 grant execute on function push_office_items(text, json, json) to anon, authenticated;

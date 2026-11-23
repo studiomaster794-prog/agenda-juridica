@@ -1,5 +1,5 @@
 const STORAGE_KEY = 'agenda-juridica-pwa-v1';
-const APP_VERSION = '1.1.2';
+const APP_VERSION = '1.2.2';
 
 const TYPES = [
   { value: 'audiencia', label: 'Audiência' },
@@ -44,7 +44,7 @@ const ONBOARDING = [
   },
   {
     title: 'Os aparelhos podem ficar iguais.',
-    text: 'Em Ajustes, crie um escritório e envie o código. A outra pessoa entra e passa a ver os mesmos processos, mesmo sem internet no momento.',
+    text: 'Em Ajustes, crie um código de 8 dígitos e envie. A outra pessoa entra e passa a ver os mesmos processos, mesmo sem internet no momento.',
   },
 ];
 
@@ -214,7 +214,9 @@ function load() {
     const raw = localStorage.getItem(STORAGE_KEY);
     if (!raw) return;
     const data = JSON.parse(raw);
-    state.appointments = Array.isArray(data.appointments) ? data.appointments : [];
+    state.appointments = Array.isArray(data.appointments)
+      ? data.appointments.map(normalizeAppointment).filter((item) => item && item.date)
+      : [];
     state.settings = { ...DEFAULT_SETTINGS, ...(data.settings || {}) };
     state.customSubjects = Array.isArray(data.customSubjects) ? data.customSubjects : [];
     state.shownAlerts = data.shownAlerts && typeof data.shownAlerts === 'object' ? data.shownAlerts : {};
@@ -284,22 +286,57 @@ function cloudRowsFromLocal(items, tombstones) {
   return rows;
 }
 
+function asText(value) {
+  if (value == null) return '';
+  return String(value).trim();
+}
+
+function normalizeAppointment(item) {
+  if (!item || typeof item !== 'object') return item;
+  const status = asText(item.status) || 'agendado';
+  const dateRaw = asText(item.date);
+  const date = parseIso(dateRaw.slice(0, 10)) ? dateRaw.slice(0, 10) : dateRaw;
+  return {
+    ...item,
+    id: asText(item.id) || createId(),
+    clientName: asText(item.clientName),
+    processNumber: asText(item.processNumber),
+    subject: asText(item.subject),
+    courthouse: asText(item.courthouse),
+    location: asText(item.location),
+    notes: asText(item.notes),
+    date,
+    time: asText(item.time) || '09:00',
+    status: STATUSES.some((entry) => entry.value === status) ? status : 'agendado',
+    reminder7d: item.reminder7d ?? true,
+    reminder1d: item.reminder1d ?? true,
+    reminderSameDay: item.reminderSameDay ?? true,
+    reminder10d: Boolean(item.reminder10d),
+  };
+}
+
 function applyRemote(remote) {
   const appointments = AgendaCloud.mergeSide(state.appointments, remote.appointments, state.tombstones.appointments);
   const subjects = AgendaCloud.mergeSide(state.customSubjects, remote.subjects, state.tombstones.subjects);
-  state.appointments = sortAppointments(appointments.items);
+  state.appointments = sortAppointments(
+    appointments.items.map(normalizeAppointment).filter((item) => item && item.date),
+  );
   state.customSubjects = subjects.items.sort((a, b) => a.name.localeCompare(b.name, 'pt-BR'));
   state.tombstones = { appointments: appointments.tombstones, subjects: subjects.tombstones };
 }
 
 async function syncNow(options = {}) {
-  if (!state.office.code || state.syncing) return false;
+  if (!state.office.code || state.syncing) {
+    if (options.alerts) await processAlerts(true);
+    return false;
+  }
   if (typeof AgendaCloud === 'undefined' || !AgendaCloud.getConfig().ready) {
     state.office.status = 'error';
     state.office.error = 'A nuvem ainda não foi configurada.';
     persistLocal();
     renderOfficePanel();
     if (options.notify) toast(state.office.error, 'error');
+    if (options.alerts) await processAlerts(true);
     return false;
   }
   state.syncing = true;
@@ -318,6 +355,7 @@ async function syncNow(options = {}) {
     state.office.error = '';
     persistLocal();
     render();
+    await processAlerts(Boolean(options.alerts));
     return true;
   } catch (err) {
     state.office.status = navigator.onLine === false ? 'offline' : 'error';
@@ -325,6 +363,7 @@ async function syncNow(options = {}) {
     persistLocal();
     renderOfficePanel();
     if (options.notify) toast(state.office.status === 'offline' ? 'Sem internet. Tentamos de novo quando voltar.' : 'Não foi possível sincronizar agora.', 'error');
+    if (options.alerts) await processAlerts(true);
     return false;
   } finally {
     state.syncing = false;
@@ -373,8 +412,8 @@ function renderOfficePanel() {
   const help = $('#office-help');
   if (help) {
     help.textContent = connected
-      ? 'Os aparelhos com este código veem os mesmos processos.'
-      : 'Crie um escritório neste celular e entre com o código no outro. Os processos ficam iguais nos dois.';
+      ? 'Os aparelhos com este código veem os mesmos processos. No iPhone, o aviso cai ao abrir o aplicativo — deixe-o na tela inicial e permita as notificações.'
+      : 'Crie um código de 8 dígitos neste celular e envie para o outro. Os processos ficam iguais nos dois.';
   }
   if (connected) {
     const label = $('#office-code-label');
@@ -404,19 +443,62 @@ async function ensureCloudReady(nextAction) {
   return false;
 }
 
-async function createSharedOffice() {
-  if (!(await ensureCloudReady('create'))) return;
+function officeShareText(code) {
+  return `Código da Agenda Jurídica: ${code}\n\nAbra o aplicativo → Ajustes → Entrar com um código e digite esses 8 dígitos.`;
+}
+
+async function shareOfficeCode() {
+  const code = state.office.code;
+  if (!code) return;
+  const text = officeShareText(code);
   try {
-    const created = await AgendaCloud.createOffice();
+    if (navigator.share) {
+      await navigator.share({ title: 'Agenda Jurídica', text });
+      return;
+    }
+  } catch (err) {
+    if (err && err.name === 'AbortError') return;
+  }
+  const whatsapp = `https://wa.me/?text=${encodeURIComponent(text)}`;
+  try {
+    window.open(whatsapp, '_blank', 'noopener');
+    return;
+  } catch {
+    /* cai no copiar */
+  }
+  const ok = await copyText(code);
+  toast(ok ? 'Código copiado. Envie no WhatsApp para o outro celular.' : 'Anote o código na tela e envie para o outro celular.', ok ? 'success' : 'error');
+}
+
+async function createSharedOffice(chosenCode) {
+  const choosing = arguments.length > 0;
+  if (!(await ensureCloudReady(choosing ? 'choose' : 'create'))) return;
+  const code = choosing
+    ? AgendaCloud.normalizeCode(chosenCode)
+    : AgendaCloud.generateDigitCode();
+  if (choosing && !AgendaCloud.isDigitCode(code)) {
+    setChooseError('Digite 8 números. O traço entra sozinho.');
+    toast('Digite 8 números. O traço entra sozinho.', 'error');
+    return;
+  }
+  try {
+    const created = await AgendaCloud.createOfficeWithCode(code);
     state.office = { code: created.code, lastSyncAt: '', status: 'syncing', error: '' };
     persistLocal();
     renderOfficePanel();
-    const ok = await syncNow({ notify: true });
+    $('#office-choose-modal').classList.remove('show');
+    const ok = await syncNow({ notify: true, alerts: true });
     $('#office-created-code').textContent = created.code;
     $('#office-created-modal').classList.add('show');
-    toast(ok ? 'Escritório criado. Envie o código para o outro celular.' : 'Escritório criado. A sincronização tenta de novo em instantes.');
+    toast(
+      ok
+        ? 'Escritório criado. Envie o código de 8 dígitos para o outro celular.'
+        : 'Escritório criado. A sincronização tenta de novo em instantes.',
+    );
   } catch (err) {
-    toast(err.message || 'Não foi possível criar o escritório.', 'error');
+    const message = err.message || 'Não foi possível criar o escritório.';
+    if (chosenCode) setChooseError(message);
+    toast(message, 'error');
   }
 }
 
@@ -436,6 +518,21 @@ function setJoinError(message) {
   el.classList.toggle('hidden', !message);
 }
 
+function setChooseError(message) {
+  const el = $('#office-choose-error');
+  if (!el) return;
+  el.textContent = message || '';
+  el.classList.toggle('hidden', !message);
+}
+
+function formatDigitCodeInput(value) {
+  const raw = String(value || '')
+    .replace(/\D/g, '')
+    .slice(0, 8);
+  if (raw.length <= 4) return raw;
+  return `${raw.slice(0, 4)}-${raw.slice(4)}`;
+}
+
 function setJoinBusy(busy) {
   state.joining = busy;
   const btn = $('#office-join-ok');
@@ -453,7 +550,7 @@ async function joinSharedOffice(rawCode) {
   if (!(await ensureCloudReady('join'))) return;
   const code = AgendaCloud.normalizeCode(rawCode);
   if (!/^[A-Z0-9]{4}-[A-Z0-9]{4}$/.test(code)) {
-    setJoinError('Digite as 8 letras e números do código. O traço entra sozinho.');
+    setJoinError('Digite os 8 dígitos do código. O traço entra sozinho.');
     return;
   }
   setJoinBusy(true);
@@ -461,14 +558,20 @@ async function joinSharedOffice(rawCode) {
     const joined = await AgendaCloud.joinOffice(code);
     state.office = { code: joined.code, lastSyncAt: '', status: 'syncing', error: '' };
     persistLocal();
-    const ok = await syncNow({ notify: true });
+    const ok = await syncNow({ notify: true, alerts: true });
     $('#office-join-modal').classList.remove('show');
-    toast(ok ? 'Aparelhos ligados. Os processos passam a ser os mesmos.' : 'Entrou no escritório. A sincronização tenta de novo em instantes.');
+    await requestNotifications().catch(() => undefined);
+    maybeShowInstall();
+    toast(
+      ok
+        ? 'Aparelhos ligados. Abra o aplicativo de manhã para ver os avisos do dia.'
+        : 'Entrou no escritório. A sincronização tenta de novo em instantes.',
+    );
     render();
   } catch (err) {
     const message =
       err.message === 'Código inválido' || /argument of NOT/i.test(err.message || '') || /type offices/i.test(err.message || '')
-        ? 'Esse código não existe. Confira as 8 letras e números com o outro aparelho.'
+        ? 'Esse código não existe. Confira os 8 dígitos com o outro aparelho.'
         : err.message || 'Não foi possível entrar. Tente de novo.';
     setJoinError(message);
     toast(message, 'error');
@@ -595,18 +698,48 @@ function stats() {
   };
 }
 
+function relativeAlertLabel(item, diff) {
+  const type = typeLabel(item.type);
+  if (diff === 0) return `${type} hoje`;
+  if (diff === 1) return `${type} amanhã`;
+  return `${type} daqui a ${diff} dias`;
+}
+
+function alertDayKey(item, kind, channel, now = new Date()) {
+  return `${item.id}:${kind}:${channel}:${todayIso(now)}`;
+}
+
+function alertWasShown(item, kind, channel, now) {
+  const todayKey = alertDayKey(item, kind, channel, now);
+  const legacy = `${item.id}:${kind}`;
+  return Boolean(state.shownAlerts[todayKey] || state.shownAlerts[`${legacy}:${todayIso(now)}`]);
+}
+
 function dueAlerts(now = new Date()) {
   const results = [];
   for (const item of activeAppointments()) {
     const diff = daysUntil(item.date, now);
+    if (diff < 0) continue;
     const push = (kind, label) => {
-      const key = `${item.id}:${kind}:${todayIso(now)}`;
-      results.push({ item, kind, label, key, shown: Boolean(state.shownAlerts[key]) });
+      const key = alertDayKey(item, kind, 'modal', now);
+      results.push({
+        item,
+        kind,
+        label,
+        key,
+        shown: alertWasShown(item, kind, 'modal', now),
+        osShown: alertWasShown(item, kind, 'os', now),
+      });
     };
-    if (item.reminderSameDay && diff === 0) push('same_day', `${typeLabel(item.type)} hoje`);
-    if (item.reminder1d && diff === 1) push('1d', `${typeLabel(item.type)} amanhã`);
-    if (item.reminder7d && diff === 7) push('7d', `${typeLabel(item.type)} daqui a 7 dias`);
-    if (item.reminder10d && diff === 10) push('10d', `${typeLabel(item.type)} daqui a 10 dias`);
+    if (diff === 0) {
+      push('same_day', `${typeLabel(item.type)} hoje`);
+    } else if (diff === 1) {
+      push('1d', `${typeLabel(item.type)} amanhã`);
+    } else if ((item.reminder7d ?? true) && diff <= 7) {
+      push('7d', relativeAlertLabel(item, diff));
+    } else if (item.reminder10d && diff <= 10) {
+      push('10d', relativeAlertLabel(item, diff));
+    }
   }
   return results;
 }
@@ -621,11 +754,11 @@ function alertBody(item, kind) {
 }
 
 async function fireBrowserNotification(alert) {
-  if (!state.settings.notificationsEnabled) return;
-  if (!('Notification' in window) || Notification.permission !== 'granted') return;
+  if (!state.settings.notificationsEnabled) return false;
+  if (!('Notification' in window) || Notification.permission !== 'granted') return false;
   const title = alert.label;
   const body = alertBody(alert.item, alert.kind);
-  const tag = alert.key;
+  const tag = alertDayKey(alert.item, alert.kind, 'os');
   try {
     const ready = navigator.serviceWorker ? await navigator.serviceWorker.ready.catch(() => null) : null;
     if (ready?.active) {
@@ -633,14 +766,15 @@ async function fireBrowserNotification(alert) {
     } else {
       new Notification(title, { body, icon: './icons/icon-192.png', tag });
     }
+    return true;
   } catch {
-    /* notificação do sistema indisponível */
+    return false;
   }
 }
 
-function markShown(alerts) {
+function markShown(alerts, channel, now = new Date()) {
   alerts.forEach((alert) => {
-    state.shownAlerts[alert.key] = true;
+    state.shownAlerts[alertDayKey(alert.item, alert.kind, channel, now)] = true;
   });
   const cutoff = Date.now() - 45 * 86400000;
   for (const key of Object.keys(state.shownAlerts)) {
@@ -649,7 +783,7 @@ function markShown(alerts) {
     const d = parseIso(day);
     if (d && d.getTime() < cutoff) delete state.shownAlerts[key];
   }
-  save();
+  persistLocal();
 }
 
 function showAlertModal(alerts) {
@@ -669,13 +803,23 @@ function showAlertModal(alerts) {
 
 async function processAlerts(fromUserOpen = false) {
   const alerts = dueAlerts();
+  try {
+    renderHome();
+  } catch {
+    /* a lista da home não pode impedir o aviso */
+  }
   if (!alerts.length) return;
-  const fresh = alerts.filter((alert) => !alert.shown);
-  renderHome();
-  if (!fresh.length) return;
-  if (fromUserOpen) showAlertModal(fresh);
-  for (const alert of fresh) await fireBrowserNotification(alert);
-  markShown(fresh);
+  const freshModal = alerts.filter((alert) => !alert.shown);
+  const freshOs = alerts.filter((alert) => !alert.osShown);
+  if (fromUserOpen && freshModal.length) {
+    showAlertModal(freshModal);
+    markShown(freshModal, 'modal');
+  }
+  const notified = [];
+  for (const alert of freshOs) {
+    if (await fireBrowserNotification(alert)) notified.push(alert);
+  }
+  if (notified.length) markShown(notified, 'os');
 }
 
 function scheduleAlertCheck() {
@@ -1335,10 +1479,13 @@ async function requestNotifications() {
   if (!('Notification' in window)) return false;
   try {
     const perm = await Notification.requestPermission();
-    state.settings.notificationsEnabled = perm === 'granted';
-    save();
-    renderSettings();
-    return perm === 'granted';
+    if (perm === 'granted') {
+      state.settings.notificationsEnabled = true;
+      save();
+      renderSettings();
+      return true;
+    }
+    return false;
   } catch {
     return false;
   }
@@ -1375,7 +1522,7 @@ function startApp() {
   render();
   processAlerts(true);
   scheduleAlertCheck();
-  syncNow().catch(() => undefined);
+  syncNow({ alerts: true }).catch(() => undefined);
 }
 
 function bind() {
@@ -1483,7 +1630,7 @@ function bind() {
     processAlerts(true);
     scheduleAlertCheck();
     requestNotifications().catch(() => undefined);
-    syncNow().catch(() => undefined);
+    syncNow({ alerts: true }).catch(() => undefined);
   });
 
   $('#appt-form').addEventListener('submit', (event) => {
@@ -1542,6 +1689,9 @@ function bind() {
     if (event.target.checked) {
       const ok = await requestNotifications();
       event.target.checked = ok;
+      if (!ok) {
+        toast('O celular não liberou o aviso do sistema. Os avisos continuam aparecendo ao abrir o aplicativo.', 'error');
+      }
     } else {
       state.settings.notificationsEnabled = false;
       save();
@@ -1618,11 +1768,34 @@ function bind() {
     render();
     processAlerts(true);
     scheduleAlertCheck();
-    syncNow().catch(() => undefined);
+    syncNow({ alerts: true }).catch(() => undefined);
   });
 
   $('#btn-office-create').addEventListener('click', () => {
     createSharedOffice().catch(() => undefined);
+  });
+  $('#btn-office-choose').addEventListener('click', async () => {
+    if (!(await ensureCloudReady('choose'))) return;
+    setChooseError('');
+    $('#office-choose-input').value = '';
+    $('#office-choose-modal').classList.add('show');
+    setTimeout(() => $('#office-choose-input').focus(), 50);
+  });
+  $('#office-choose-cancel').addEventListener('click', () => {
+    $('#office-choose-modal').classList.remove('show');
+  });
+  $('#office-choose-ok').addEventListener('click', () => {
+    createSharedOffice($('#office-choose-input').value).catch(() => undefined);
+  });
+  $('#office-choose-input').addEventListener('input', (event) => {
+    event.target.value = formatDigitCodeInput(event.target.value);
+    setChooseError('');
+  });
+  $('#office-choose-input').addEventListener('keydown', (event) => {
+    if (event.key === 'Enter') {
+      event.preventDefault();
+      createSharedOffice($('#office-choose-input').value).catch(() => undefined);
+    }
   });
   $('#btn-office-join').addEventListener('click', async () => {
     if (!(await ensureCloudReady('join'))) return;
@@ -1656,6 +1829,9 @@ function bind() {
     const ok = await copyText(state.office.code);
     toast(ok ? 'Código copiado. Envie para o outro celular.' : 'Não foi possível copiar. Anote o código na tela.');
   });
+  $('#btn-office-share').addEventListener('click', () => {
+    shareOfficeCode().catch(() => undefined);
+  });
   $('#btn-office-sync').addEventListener('click', () => {
     syncNow({ notify: true }).catch(() => undefined);
   });
@@ -1676,6 +1852,9 @@ function bind() {
     if (!state.office.code) return;
     const ok = await copyText(state.office.code);
     toast(ok ? 'Código copiado.' : 'Anote o código na tela.');
+  });
+  $('#office-created-share').addEventListener('click', () => {
+    shareOfficeCode().catch(() => undefined);
   });
   $('#office-copy-sql').addEventListener('click', async () => {
     try {
@@ -1727,6 +1906,11 @@ function bind() {
     state.pendingOfficeAction = '';
     if (next === 'create') {
       await createSharedOffice();
+    } else if (next === 'choose') {
+      setChooseError('');
+      $('#office-choose-input').value = '';
+      $('#office-choose-modal').classList.add('show');
+      setTimeout(() => $('#office-choose-input').focus(), 50);
     } else if (next === 'join') {
       $('#office-join-input').value = '';
       $('#office-join-modal').classList.add('show');
@@ -1856,7 +2040,7 @@ function bind() {
         'Substituir',
       );
       if (!ok) return;
-      state.appointments = sortAppointments(items);
+      state.appointments = sortAppointments(items.map(normalizeAppointment).filter((item) => item && item.date));
       if (Array.isArray(data.customSubjects)) state.customSubjects = data.customSubjects;
       save();
       toast('Cópia de segurança restaurada.');
@@ -1885,8 +2069,7 @@ function bind() {
 
   document.addEventListener('visibilitychange', () => {
     if (document.visibilityState === 'visible') {
-      processAlerts(true);
-      syncNow().catch(() => undefined);
+      syncNow({ alerts: true }).catch(() => processAlerts(true));
     }
   });
   window.addEventListener('online', () => {

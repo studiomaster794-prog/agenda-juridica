@@ -69,13 +69,38 @@
       if (/argument of NOT must be type boolean/i.test(message) || /type offices/i.test(message)) {
         message = 'Código inválido';
       }
+      if (/could not find the function/i.test(message) && /create_office_with_code/i.test(message)) {
+        message = 'Atualize o SQL no Supabase para usar o código de 8 dígitos.';
+      }
       throw new Error(message || 'Falha na sincronização');
     }
     return data;
   }
 
+  function isDigitCode(value) {
+    return /^[0-9]{4}-[0-9]{4}$/.test(normalizeCode(value));
+  }
+
+  function generateDigitCode() {
+    let digits = '';
+    const cryptoObj = global.crypto;
+    if (cryptoObj && cryptoObj.getRandomValues) {
+      const buf = new Uint8Array(8);
+      cryptoObj.getRandomValues(buf);
+      digits = Array.from(buf, (n) => n % 10).join('');
+    } else {
+      for (let i = 0; i < 8; i += 1) digits += String(Math.floor(Math.random() * 10));
+    }
+    if (/^(\d)\1{7}$/.test(digits)) return generateDigitCode();
+    return `${digits.slice(0, 4)}-${digits.slice(4)}`;
+  }
+
   function createOffice() {
     return rpc('create_office', {});
+  }
+
+  function createOfficeWithCode(code) {
+    return rpc('create_office_with_code', { p_code: normalizeCode(code) });
   }
 
   async function joinOffice(code) {
@@ -112,7 +137,15 @@
         }
         continue;
       }
-      const payload = row.payload && typeof row.payload === 'object' ? { ...row.payload } : {};
+      let payload = row.payload;
+      if (typeof payload === 'string') {
+        try {
+          payload = JSON.parse(payload);
+        } catch {
+          payload = null;
+        }
+      }
+      payload = payload && typeof payload === 'object' ? { ...payload } : {};
       payload.id = payload.id || id;
       if (!payload.updatedAt) payload.updatedAt = remoteUpdated;
       if (!local || String(remoteUpdated) > String(localUpdated)) {
@@ -127,7 +160,10 @@
     getConfig,
     setLocalConfig,
     normalizeCode,
+    isDigitCode,
+    generateDigitCode,
     createOffice,
+    createOfficeWithCode,
     joinOffice,
     pullOffice,
     pushItems,
